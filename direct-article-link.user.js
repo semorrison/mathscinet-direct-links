@@ -156,7 +156,9 @@ function saveToDropbox(metadata) {
       console.log("Packing metadata to send to the background page.")
       packMetadata(metadata, function(packedMetadata) {
         console.log("Sending a 'saveToDropbox' request to the background page.")
-        chrome.runtime.sendMessage({cmd: "saveToDropbox", metadata: packedMetadata });
+        chrome.runtime.sendMessage({cmd: "saveToDropbox", metadata: packedMetadata }, function(response) {
+          papersSavedInDropbox[metadata.MRNUMBER] = metadata.filename;
+        });
       });
     }
   }
@@ -361,6 +363,7 @@ function rewriteArticleLinks() {
           var MRNUMBER = $(div).find("strong").first().text();
           var h = $(div).clone();
           h.find(".item_status").remove();
+          /* FIXME Hmm, it seems this isn't good enough, and we're getting backslashes in file names. */
           h.find("span.MathTeX").remove();
           if(h.find("div.checkbox").length !== 0) {
             h = h.find("div.headlineText").first();

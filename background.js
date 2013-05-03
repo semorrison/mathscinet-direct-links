@@ -2,6 +2,7 @@
 var settingsKeys = ["#berserk","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
 var settings = {};
 
+// TODO what happens on first load?
 chrome.storage.sync.get(settingsKeys, function(items) {
   settings = items;
 });
@@ -69,16 +70,22 @@ function waitForDropboxClient(callback) {
   }
 }
 
-function saveToDropbox(metadata) {
+function saveToDropbox(metadata, successCallback) {
   if(settings["#dropbox"]) {
     if(papersSavedInDropbox[metadata.MRNUMBER]) {
       console.log("Ignored 'saveToDropbox' command, it looks like the file is already there.");
     } else {
       waitForDropboxClient(function() {
         console.log("Writing file to dropbox.");
-        dropboxClient.writeFile(metadata.filename, metadata.blob);
-        papersSavedInDropbox[metadata.MRNUMBER] = metadata.filename;
-        console.log("Finished writing file to dropbox.");
+        dropboxClient.writeFile(metadata.filename, metadata.blob, function(error, stat) {
+         if (error) {
+           console.log("Failed to write file to dropbox, " + error.status);  /* Something went wrong. */
+         } else {
+          papersSavedInDropbox[metadata.MRNUMBER] = metadata.filename;
+          console.log("Finished writing file to dropbox.");          
+          successCallback();
+        }
+      });
       });
     }
   } else {
@@ -148,7 +155,15 @@ chrome.runtime.onMessage.addListener(
   function(request, sender, sendResponse) {
     console.log("Background page received a '" + request.cmd + "' request.")
     if (request.cmd == "saveToDropbox") {
-      setTimeout(function() { saveToDropbox(attachHandle(unpackMetadata(request.metadata))); }, 0);
+      setTimeout(function() {
+        saveToDropbox(
+          attachHandle(unpackMetadata(request.metadata)), 
+          function() {
+            sendResponse(true);
+          }
+          ); 
+      }, 0);
+      return true; // we're sending a delayed response
     } else if(request.cmd == "listPapersSavedInDropbox") {
       waitForDropboxClient(function() {
         console.log("... sending response for 'listPapersSavedInDropbox' request.");
