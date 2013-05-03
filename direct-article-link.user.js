@@ -1,5 +1,5 @@
 // These keys also appear in Settings.js
-var settingsKeys = ["#berserk","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
+var settingsKeys = ["#berserk","#throttle","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
 var settings = {};
 var papersSavedInDropbox = {}; // a map from MRNUMBERs to filenames // Filenames are being encoding-mangled, don't trust them...
 
@@ -16,11 +16,7 @@ function main() {
 
   chrome.storage.sync.get(settingsKeys, function(items) {
     if(Object.keys(items).length == 0) {
-      alert("Welcome to the 'MathSciNet direct links' extension." + "\n" +
-        "Click the 'library' icon in the address bar to adjust your settings." + "\n" +
-        "Click 'PDFs' in the MathSciNet toolbar to view and manage cached PDFs.");
-      items = { "#inline": true, "#store": true, "#dropbox": true };
-      chrome.storage.sync.set(items, continuation);
+      welcome(continuation);
     } else {
       continuation();
     }
@@ -28,16 +24,22 @@ function main() {
       settings = items;
       if(settings["#dropbox"]) {
         chrome.runtime.sendMessage({cmd: "listPapersSavedInDropbox"}, function(response) {
-        // Warning: somehow chrome is mangled the character encoding here, so don't trust the filenames in papersSavedInDropbox
-        papersSavedInDropbox = response.papersSavedInDropbox;
-        rewriteArticleLinks();
-      })
+          papersSavedInDropbox = response.papersSavedInDropbox; // Warning: somehow chrome is mangled the character encoding here, so don't trust the filenames in papersSavedInDropbox
+          rewriteArticleLinks();
+        });
       } else {
         rewriteArticleLinks();
       }
     }
   });
+}
 
+function welcome(continuation) {
+  alert("Welcome to the 'MathSciNet direct links' extension." + "\n" +
+    "Click the 'library' icon in the address bar to adjust your settings." + "\n" +
+    "Click 'PDFs' in the MathSciNet toolbar to view and manage cached PDFs.");
+  items = { "#inline": true, "#store": true, "#dropbox": true };
+  chrome.storage.sync.set(items, continuation);
 }
 
 function insertMenuItem() {
@@ -421,7 +423,6 @@ function rewriteArticleLinks() {
                 }
                 console.log("Sending a request: " + JSON.stringify(cmd));
                 chrome.runtime.sendMessage(cmd, function(response) {
-                  console.log("Incredible, a PDF arrived back via the iframe and background page.");
                   metadata.PDF = response.uri;
                   processPDF(metadata);
                 });
@@ -432,15 +433,22 @@ function rewriteArticleLinks() {
             }
           }
         }
+
+        var delay = 0;
+        var interval = Math.round(settings["#throttle"]);
         metadataDivs.each(function() {
-          var metadata = extractMetadata(this);
-          findPDF(metadata, function(metadata) {
-            if(metadata.PDF) {
-              console.log("Found PDF link: " + metadata.PDF);
-              metadata.link.attr('href', metadata.PDF);
-              eventually(metadata);
-            }
-          }, metadataDivs.length == 1 || settings["#berserk"]);
+          var div = this;
+          window.setTimeout(function() {
+            var metadata = extractMetadata(div);
+            findPDF(metadata, function(metadata) {
+              if(metadata.PDF) {
+                console.log("Found PDF link: " + metadata.PDF);
+                metadata.link.attr('href', metadata.PDF);
+                eventually(metadata);
+              }
+            }, metadataDivs.length == 1 || settings["#berserk"]);
+          }, delay);
+          delay += interval
         });
       }
 

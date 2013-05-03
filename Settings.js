@@ -1,4 +1,4 @@
-var ids = ["#berserk","#inline","#filename","#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
+var ids = ["#berserk","#throttle","#inline","#filename","#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
 
 function save_options() {
   console.log("saving options");
@@ -16,7 +16,10 @@ function save_options() {
     items[id] = value;
   }
   console.log(JSON.stringify(items));
-  chrome.storage.sync.set(items);
+  chrome.storage.sync.set(items, function() {
+    // tell the background page
+    chrome.runtime.sendMessage({cmd: "refreshSettings"});
+  });
 }
 
 // Restores select box state to saved value from localStorage.
@@ -41,4 +44,5 @@ function restore_options() {
 document.addEventListener('DOMContentLoaded', restore_options);
 for (var i = 0; i < ids.length; i++) {
   document.querySelector(ids[i]).addEventListener('click', save_options);
+  document.querySelector(ids[i]).addEventListener('keyup', save_options);
 }

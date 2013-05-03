@@ -1,12 +1,17 @@
 // These keys also appear in Settings.js
-var settingsKeys = ["#berserk","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
+var settingsKeys = ["#berserk","#throttle","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
 var settings = {};
 
-// TODO what happens on first load?
-chrome.storage.sync.get(settingsKeys, function(items) {
-  settings = items;
-});
+function refreshSettings() {
+  chrome.storage.sync.get(settingsKeys, function(items) {
+    if(Object.keys(items).length == 0) {
+      items = { "#inline": true, "#store": true, "#dropbox": true };
+    }
+    settings = items;
+  });
+}
 
+refreshSettings();
 
 // Called when the url of a tab changes.
 function checkForMathSciNet(tabId, changeInfo, tab) {
@@ -154,7 +159,9 @@ function attachHandle(metadata) {
 chrome.runtime.onMessage.addListener(
   function(request, sender, sendResponse) {
     console.log("Background page received a '" + request.cmd + "' request.")
-    if (request.cmd == "saveToDropbox") {
+    if (request.cmd == "refreshSettings") {
+      refreshSettings();
+    } else if (request.cmd == "saveToDropbox") {
       setTimeout(function() {
         saveToDropbox(
           attachHandle(unpackMetadata(request.metadata)), 
