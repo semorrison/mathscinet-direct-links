@@ -6,8 +6,6 @@ var settingsKeys = [
   "#filename",
   "#download",
   "#download-zip",
-  "#store",
-  "#store-synchronized",
   "#dropbox",
   "#drive",
   "#mega",
@@ -24,8 +22,6 @@ var onSearchPage = false;
 
 function main() {    
   console.log("direct-article-link.user.js starting up on " + location.href + " at " + new Date().getTime());
-
-  insertMenuItem();
 
   chrome.storage.sync.get(settingsKeys, function(items) {
     if(Object.keys(items).length == 0) {
@@ -51,78 +47,9 @@ function welcome(continuation) {
   alert("Welcome to the 'MathSciNet direct links' extension." + "\n" +
     "I'm now going to take you over to Dropbox to authenticate; if you don't have a Dropbox account please disregard this." + "\n\n" +
     "---> Click the 'library' icon in the address bar to adjust your settings." + "\n"
-    + "---> Click 'PDFs' in the MathSciNet toolbar to view and manage cached PDFs."
     );
-  items = { "#inline": true, "#store": false, "#dropbox": true };
+  items = { "#inline": true, "#dropbox": true };
   chrome.storage.sync.set(items, continuation);
-}
-
-function insertMenuItem() {
-  $("ul#menu").prepend($("<li/>").attr({ class: 'first' }).append($("<a/>").text("PDFs").click(function() { switchToPDFViewer(); })));
-
-  function showFiles(filter) {
-   findFilesByName(function(name) { return name.indexOf(filter) !== -1; }, continuation);
-   function continuation(files) {
-    $("#FileList").children().remove();
-    files.forEach(function(file) {
-      var li = $("<li/>");
-      li
-      .append($("<a/>").text("x").css('color', 'red').click(function() { deleteFile(file.name); li.remove(); }))
-      .append($("<a/>").attr({ href: file.toURL(), download: file.name  }).append(downloadIcon()))
-      .append($("<a/>").text(file.name).attr({ class: 'pdf', href: file.toURL() }))
-      $("#FileList").append(li);
-    });
-  }
-}
-
-function switchToPDFViewer() {
-  $("#everything").hide();
-  $("#everything").after($("<div/>").load(chrome.extension.getURL('PDFViewer.html'), function() {
-    $("#return").click(switchBack);
-    $("#filter").keyup(function(event) { showFiles(this.value); });
-    $("#delete-all").click(function() {
-      $("#FileList a.pdf").each(function() {
-        deleteFile($(this).text());
-        $(this).parent().remove();
-      });
-    });
-    $("#download-all").click(function() {
-      console.log("Creating zip file...");
-      var zip = new JSZip();
-      var count = $("#FileList a.pdf").length;
-      $("#zip-progress").show();
-      $("#zip-counter").text(count);
-      $("#FileList a.pdf").each(function() {
-        var name = $(this).text();
-        console.log("...requesting zip entry for " + name);
-        window.resolveLocalFileSystemURL(this.href, function(fileEntry) {
-          fileEntry.file(function(file) {
-            console.log("...obtained file entry for " + name);
-            readAsArrayBuffer(file, function(buffer) {
-              console.log("...obtained array buffer for " + name);
-              zip.file(name, buffer, { binary: true });
-              count--;
-              $("#zip-counter").text(count);
-              console.log("..." + count + " entries remaining")
-              if(count == 0) {
-                console.log("...initiating save")
-                window.saveAs(zip.generate({type:"blob", compression:"STORE"}), "papers.zip");
-                $("#zip-progress").hide();
-              }
-            });
-          });
-        });
-      });
-    });
-showFiles("");
-}));
-}
-
-function switchBack() {
-  $("#PDFViewer").remove();
-  $("#everything").show();
-}
-
 }
 
 
@@ -222,39 +149,6 @@ function saveToDropbox(metadata) {
   }
 }
 
-function saveBlobToFileSystem(blob, filename) {
-  function errorHandler(error) { console.log("An error occurred while saving to the chrome file system: ", error); }
-
-  if(typeof fileSystem !== "undefined") {
-    fileSystem.root.getFile(filename, {create: true}, function(fileEntry) {
-            // Create a FileWriter object for our FileEntry .
-            fileEntry.createWriter(function(fileWriter) {
-             fileWriter.onwriteend = function(e) {
-              console.log('Write completed.');
-            };
-            fileWriter.onerror = function(e) {
-              console.log('Write failed: ' + e.toString());
-            };
-            fileWriter.write(blob);
-          }, errorHandler);
-            console.log("Writing blob to " + fileEntry.toURL());
-          }, errorHandler);
-  } else {
-    console.log("Warning: chrome file system not available.");
-  }  
-}
-
-function saveToFileSystem(metadata) {
-  if(settings["#store"]) {
-    if(metadata.PDF.indexOf("filesystem:") === 0) {
-      console.log("PDF is already in the chrome file system");
-      return;
-    } else {
-      saveBlobToFileSystem(metadata.blob, metadata.filename);
-    }
-  }
-}
-
 function generateDownload(metadata) {
   if(settings["#download"]) {
     if(settings["#download-zip"]) {
@@ -303,44 +197,22 @@ function findPDF(metadata, callback, allowScraping) {
     callback(metadata);
   }
 
-  // First, check the chrome file system and dropbox, in case we've collected it previously.
-  if(metadata.MRNUMBER) {
-    findFilesByName(function(name) { return name.indexOf(metadata.MRNUMBER) !== -1; }, function(files) {
-      if(files.length > 0) {
-        continuation(files);
-      } else {
-        if(papersSavedInDropbox[metadata.MRNUMBER]) {
-          /* Here we get back a data URI from the background page. */
-          /* An alternative strategy might have been to obtain a Dropbox download link from the background page. */
-          var cmd = {
-            cmd: "loadFromDropbox", 
-            metadata: { 
-              MRNUMBER: metadata.MRNUMBER, 
-              filename: metadata.filename 
-            } 
-          };
-          console.log("Sending request: " + JSON.stringify(cmd));
-          chrome.runtime.sendMessage(cmd, function(responseMetadata) {
-            doCallback(responseMetadata.uri);
-          });
-        } else {
-          continuation([]);
-        }
-      }
+  // First, check dropbox, in case we've collected it previously.
+  if(metadata.MRNUMBER && papersSavedInDropbox[metadata.MRNUMBER]) {
+    /* Here we get back a data URI from the background page. */
+    /* An alternative strategy might have been to obtain a Dropbox download link from the background page. */
+    var cmd = {
+      cmd: "loadFromDropbox", 
+      metadata: { 
+        MRNUMBER: metadata.MRNUMBER, 
+        filename: metadata.filename 
+      } 
+    };
+    console.log("Sending request: " + JSON.stringify(cmd));
+    chrome.runtime.sendMessage(cmd, function(responseMetadata) {
+      doCallback(responseMetadata.uri);
     });
   } else {
-    continuation([]);
-  }
-
-  function continuation(files) {
-    if(files.length == 1) {
-      console.log("Found PDF in local file system.");
-      doCallback(files[0].toURL());
-      return;
-    }
-    if(files.length !== 0) {
-      console.log("Strange, I found multiple PDFs for " + JSON.stringify({ MRNUMBER: metadata.MRNUMBER }));
-    }
     if(metadata.URL) {
       if( // handle Elsevier separately
         metadata.URL.startsWith("http://dx.doi.org/10.1006") || 
@@ -410,106 +282,106 @@ function rewriteArticleLinks() {
   var metadataDivs = $("div.headline");
   console.log("Found " + metadataDivs.length + " metadata divs.");
 
-        // First, strip out all the "leavingmsn" prefixes
-        metadataDivs.find("a").attr('href', function() { return this.href.replace(/http:\/\/[^\/]*\/leavingmsn\?url=/,""); });
+  // First, strip out all the "leavingmsn" prefixes
+  metadataDivs.find("a").attr('href', function() { return this.href.replace(/http:\/\/[^\/]*\/leavingmsn\?url=/,""); });
 
-        onSearchPage = metadataDivs.length > 1;
+  onSearchPage = metadataDivs.length > 1;
 
-        function extractMetadata(div) {
-          var link = $(div).find("a:contains('Article'), a:contains('Chapter'), a:contains('Thesis'), a:contains('Book')")
-          var URL = link.attr('href');
-          var MRNUMBER = $(div).find("strong").first().text();
-          var h = $(div).clone();
-          h.find(".item_status").remove();
-          /* FIXME Hmm, it seems this isn't good enough, and we're getting backslashes in file names. */
-          h.find("span.MathTeX").remove();
-          if(h.find("div.checkbox").length !== 0) {
-            h = h.find("div.headlineText").first();
-            // we're looking at a search results page
-            // chuck stuff away
-            h.find("a[href*=mscdoc]").nextAll().remove();
-            h.find("a[href*=mscdoc]").remove();
-            h.find(".sfx").nextAll().remove();
-            h.find(".sfx").remove();
-            // insert dashes
-            h.find("a.mrnum").after(" %%%% ");
-            h.find("span.title").before(" %%%% ");
-            h.find("span.title").after(" %%%% ");
-          } else {
-            // we're on an article page
-            // chuck stuff away
-            h.find(".sfx").remove();
-            h.find("strong").eq(1).remove();
-            h.find("a[href*=institution]").remove();
-            h.find("br").eq(3).nextAll().remove();
-            h.find("br").eq(3).remove();
-            // insert dashes
-            h.find("br").replaceWith(" %%%% ");
-          }
-          /* cleanup */
-          h.contents().filter(function() { return this.nodeType === 3 && this.textContent === "; "; }).replaceWith(" and ");
-          var citation = h.text().replace(/\(Reviewer: .*\)/, '').replace(/\s+/g, ' ').trim();
-          var cs = citation.split("%%%%");
-          var authors = cs[1].trim();
-          var title = cs[2].trim().replace(/\(English summary\)/, '');
-          var journalRef = cs[3].trim();
-          citation = MRNUMBER + " - " + authors + " - " + title + " - " + journalRef;
-          var m = { URL: URL, MRNUMBER: MRNUMBER, div: div, link: link, citation: citation, authors: authors, title: title, journalRef: journalRef };
-          m.filename = filename(m);
-          return m;
-        }
+  function extractMetadata(div) {
+    var link = $(div).find("a:contains('Article'), a:contains('Chapter'), a:contains('Thesis'), a:contains('Book')")
+    var URL = link.attr('href');
+    var MRNUMBER = $(div).find("strong").first().text();
+    var h = $(div).clone();
+    h.find(".item_status").remove();
+    /* FIXME Hmm, it seems this isn't good enough, and we're getting backslashes in file names. */
+    h.find("span.MathTeX").remove();
+    if(h.find("div.checkbox").length !== 0) {
+      h = h.find("div.headlineText").first();
+      // we're looking at a search results page
+      // chuck stuff away
+      h.find("a[href*=mscdoc]").nextAll().remove();
+      h.find("a[href*=mscdoc]").remove();
+      h.find(".sfx").nextAll().remove();
+      h.find(".sfx").remove();
+      // insert dashes
+      h.find("a.mrnum").after(" %%%% ");
+      h.find("span.title").before(" %%%% ");
+      h.find("span.title").after(" %%%% ");
+    } else {
+      // we're on an article page
+      // chuck stuff away
+      h.find(".sfx").remove();
+      h.find("strong").eq(1).remove();
+      h.find("a[href*=institution]").remove();
+      h.find("br").eq(3).nextAll().remove();
+      h.find("br").eq(3).remove();
+      // insert dashes
+      h.find("br").replaceWith(" %%%% ");
+    }
+    /* cleanup */
+    h.contents().filter(function() { return this.nodeType === 3 && this.textContent === "; "; }).replaceWith(" and ");
+    var citation = h.text().replace(/\(Reviewer: .*\)/, '').replace(/\s+/g, ' ').trim();
+    var cs = citation.split("%%%%");
+    var authors = cs[1].trim();
+    var title = cs[2].trim().replace(/\(English summary\)/, '');
+    var journalRef = cs[3].trim();
+    citation = MRNUMBER + " - " + authors + " - " + title + " - " + journalRef;
+    var m = { URL: URL, MRNUMBER: MRNUMBER, div: div, link: link, citation: citation, authors: authors, title: title, journalRef: journalRef };
+    m.filename = filename(m);
+    return m;
+  }
 
-        var eventually = function(metadata) { };
-        if(!onSearchPage || settings["#berserk"]) {
-          eventually = function(metadata) {
-            var href = metadata.link.attr('href');
-            if(href.indexOf("http://projecteuclid.org/DPubS/Repository/1.0/Disseminate?view=body&id=pdf_1&handle=euclid.") == 0) {
-              if(settings["#inline"]) {
-                var cmd = {
-                  cmd: "mentionEuclidHandle",
-                  handle: href.replace("http://projecteuclid.org/DPubS/Repository/1.0/Disseminate?view=body&id=pdf_1&handle=", ""),
-                  metadata: {
-                    MRNUMBER: metadata.MRNUMBER,
-                    filename: metadata.filename
-                  }
-                }
-                console.log("Sending a request: " + JSON.stringify(cmd));
-                chrome.runtime.sendMessage(cmd, function(response) {
-                  metadata.PDF = response.uri;
-                  processPDF(metadata);
-                });
-                showInIFrame({ PDF: href, handle: cmd.handle });
-              }
-            } else if(href.indexOf("pdf") !== -1 || href.indexOf("displayFulltext") !== -1 /* CUP */) {
-              processPDF(metadata);
+  var eventually = function(metadata) { };
+  if(!onSearchPage || settings["#berserk"]) {
+    eventually = function(metadata) {
+      var href = metadata.link.attr('href');
+      if(href.indexOf("http://projecteuclid.org/DPubS/Repository/1.0/Disseminate?view=body&id=pdf_1&handle=euclid.") == 0) {
+        if(settings["#inline"]) {
+          var cmd = {
+            cmd: "mentionEuclidHandle",
+            handle: href.replace("http://projecteuclid.org/DPubS/Repository/1.0/Disseminate?view=body&id=pdf_1&handle=", ""),
+            metadata: {
+              MRNUMBER: metadata.MRNUMBER,
+              filename: metadata.filename
             }
           }
+          console.log("Sending a request: " + JSON.stringify(cmd));
+          chrome.runtime.sendMessage(cmd, function(response) {
+            metadata.PDF = response.uri;
+            processPDF(metadata);
+          });
+          showInIFrame({ PDF: href, handle: cmd.handle });
         }
-
-        var delay = 0;
-        var interval = Math.round(settings["#throttle"]);
-        metadataDivs.each(function() {
-          var div = this;
-          window.setTimeout(function() {
-            var metadata = extractMetadata(div);
-            findPDF(metadata, function(metadata) {
-              if(metadata.PDF) {
-                console.log("Found PDF link: " + metadata.PDF);
-                metadata.link.attr('href', metadata.PDF);
-                eventually(metadata);
-              }
-            }, metadataDivs.length == 1 || settings["#berserk"]);
-          }, delay);
-          delay += interval
-        });
+      } else if(href.indexOf("pdf") !== -1 || href.indexOf("displayFulltext") !== -1 /* CUP */) {
+        processPDF(metadata);
       }
+    }
+  }
+
+  var delay = 0;
+  var interval = Math.round(settings["#throttle"]);
+  metadataDivs.each(function() {
+    var div = this;
+    window.setTimeout(function() {
+      var metadata = extractMetadata(div);
+      findPDF(metadata, function(metadata) {
+        if(metadata.PDF) {
+          console.log("Found PDF link: " + metadata.PDF);
+          metadata.link.attr('href', metadata.PDF);
+          eventually(metadata);
+        }
+      }, metadataDivs.length == 1 || settings["#berserk"]);
+    }, delay);
+    delay += interval
+  });
+}
 
 
 
-      if (typeof String.prototype.startsWith != 'function') {
-        String.prototype.startsWith = function (str){
-          return this.slice(0, str.length) == str;
-        };
-      }
+if (typeof String.prototype.startsWith != 'function') {
+  String.prototype.startsWith = function (str){
+    return this.slice(0, str.length) == str;
+  };
+}
 
-      main()
+main()
