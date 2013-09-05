@@ -147,10 +147,32 @@ function filename(metadata) {
   if(typeof template === "undefined" || template.indexOf("$MRNUMBER") === -1) {
     template = "$TITLE - $AUTHORS - $JOURNALREF - $MRNUMBER.pdf"
   }
+  var original = template;
   template = template.replace(/\$MRNUMBER/gi, metadata.MRNUMBER);
+  template = template.replace(/\$JOURNALREF/gi, metadata.journalRef);
   template = template.replace(/\$AUTHORS/gi, metadata.authors);
   template = template.replace(/\$TITLE/gi, metadata.title);
-  template = template.replace(/\$JOURNALREF/gi, metadata.journalRef);
+
+  // try to ensure that the filename is not too long
+  if(template.length > 250) {
+    // let's try again
+    template = original;
+    if(metadata.journalRef.length > 95) {
+      template = template.replace(/\$JOURNALREF/gi, metadata.journalRef.slice(92) + "...");
+    } else {
+      template = template.replace(/\$JOURNALREF/gi, metadata.journalRef);      
+    }
+    var maxTitleLength = 250 - (template.length - 6);
+    if(metadata.title.length > maxTitleLength) {
+      template = template.replace(/\$TITLE/gi, metadata.title.slice(maxTitleLength - 3) + "...");
+    } else {
+      template = template.replace(/\$TITLE/gi, metadata.title);      
+    }
+    if(template.length > 250) {
+      console.log("Failed to shorten filename sufficiently, sorry: " + template);
+    }
+  }
+
   // Now do some cleaning up: scary unicode colons and forward slashes
   template = template.replace(/:/gi, "꞉");
   template = template.replace(/\//gi, "⁄");
