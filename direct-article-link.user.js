@@ -151,6 +151,9 @@ function filename(metadata) {
   template = template.replace(/\$AUTHORS/gi, metadata.authors);
   template = template.replace(/\$TITLE/gi, metadata.title);
   template = template.replace(/\$JOURNALREF/gi, metadata.journalRef);
+  // Now do some cleaning up: scary unicode colons and forward slashes
+  template = template.replace(/:/gi, "꞉");
+  template = template.replace(/\//gi, "⁄");
   return template;
 }
 
