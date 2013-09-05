@@ -185,6 +185,13 @@ chrome.runtime.onMessage.addListener(
         /* TODO handle failure */
       });
       return true; // we're sending a delayed response
+    } else if(request.cmd == "loadViaBackgroundPage") {
+      loadBlob(request.url, function(blob) {
+        readAsDataURL(blob, function(uri) {
+            sendResponse({ uri: uri });
+        });
+      });
+      return true; // we're sending a delayed response
     } else if(request.cmd == "mentionEuclidHandle") {
       request.metadata.responseCallback = sendResponse;
       euclidHandles[request.handle] = request.metadata;

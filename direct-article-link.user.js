@@ -1,5 +1,18 @@
 // These keys also appear in Settings.js
-var settingsKeys = ["#berserk","#throttle","#inline","#filename", "#download","#download-zip", "#store","#store-synchronized","#dropbox","#drive","#mega","#mega-account"];
+var settingsKeys = [
+  "#berserk",
+  "#throttle",
+  "#inline",
+  "#filename",
+  "#download",
+  "#download-zip",
+  "#store",
+  "#store-synchronized",
+  "#dropbox",
+  "#drive",
+  "#mega",
+  "#mega-account"
+];
 var settings = {};
 var papersSavedInDropbox = {}; // a map from MRNUMBERs to filenames // Filenames are being encoding-mangled, don't trust them...
 
@@ -36,9 +49,11 @@ function main() {
 
 function welcome(continuation) {
   alert("Welcome to the 'MathSciNet direct links' extension." + "\n" +
-    "Click the 'library' icon in the address bar to adjust your settings." + "\n" +
-    "Click 'PDFs' in the MathSciNet toolbar to view and manage cached PDFs.");
-  items = { "#inline": true, "#store": true, "#dropbox": true };
+    "I'm now going to take you over to Dropbox to authenticate; if you don't have a Dropbox account please disregard this." + "\n\n" +
+    "---> Click the 'library' icon in the address bar to adjust your settings." + "\n"
+    + "---> Click 'PDFs' in the MathSciNet toolbar to view and manage cached PDFs."
+    );
+  items = { "#inline": true, "#store": false, "#dropbox": true };
   chrome.storage.sync.set(items, continuation);
 }
 
@@ -114,8 +129,9 @@ function switchBack() {
 function processPDF(metadata) {
   console.log("Beginning processPDF on " + metadata.MRNUMBER);
   if(settings["#inline"] || settings["#store"] || settings["#download"] || settings["#dropbox"]) {
-    metadata.link.after($('<span/>').attr({id: 'loading' + metadata.MRNUMBER}).text('…'))                
-    loadBlob(metadata.PDF, function(blob) {
+    metadata.link.after($('<span/>').attr({id: 'loading' + metadata.MRNUMBER}).text('…'));
+    /* untested: this used to just be loadBlob */                
+    loadBlobViaBackgroundPage(metadata.PDF, function(blob) {
       verifyBlob(blob, function(blob) {
         metadata.blob = blob;
         forkCallback([ saveToFileSystem, showInIFrame, generateDownload, saveToDropbox ])(metadata)
@@ -128,6 +144,17 @@ function forkCallback(callbacks) {
   return function(response) {
     callbacks.forEach(function(callback) { callback(response); } );
   }
+}
+
+function loadBlobViaBackgroundPage(url, callback) {
+  var cmd = {
+    cmd: "loadViaBackgroundPage", 
+    url: url
+  };
+  console.log("Sending request: " + JSON.stringify(cmd));
+  chrome.runtime.sendMessage(cmd, function(responseMetadata) {
+    loadBlob(responseMetadata.uri, callback);
+  });
 }
 
 function verifyBlob(blob, success, failure) {
@@ -419,7 +446,7 @@ function rewriteArticleLinks() {
             // insert dashes
             h.find("br").replaceWith(" %%%% ");
           }
-          // cleanup
+          /* cleanup */
           h.contents().filter(function() { return this.nodeType === 3 && this.textContent === "; "; }).replaceWith(" and ");
           var citation = h.text().replace(/\(Reviewer: .*\)/, '').replace(/\s+/g, ' ').trim();
           var cs = citation.split("%%%%");
