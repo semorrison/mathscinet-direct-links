@@ -37,7 +37,9 @@
   ],
   "permissions": [
     "http://*/*", 
-    "tabs"
+    "tabs",
+    "storage",
+    "unlimitedStorage"
   ],
   "web_accessible_resources": [ "download.svg", "PDFViewer.html", "lib/dropbox-0.9.2.min.js", "oauth/chrome_oauth_receiver.coffee " ]
 }
